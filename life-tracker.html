@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Tracker - Gamified Progress</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA5qpm--CsHMOhYy2SeTaH-2Cq_BS1hgO8",
+            authDomain: "life-tracker-f8e91.firebaseapp.com",
+            projectId: "life-tracker-f8e91",
+            storageBucket: "life-tracker-f8e91.firebasestorage.app",
+            messagingSenderId: "523620700940",
+            appId: "1:523620700940:web:a318dd2f156707d9b96f29"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // Make these available globally
+        window.firebaseDB = db;
+        window.firebaseAuth = auth;
+        window.firebaseModules = { doc, setDoc, getDoc, onSnapshot, signInAnonymously, onAuthStateChanged };
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 968px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        .categories-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .category {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            padding: 15px;
+            transition: transform 0.2s;
+        }
+
+        .category:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .category-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .category-level {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .xp-bar-container {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 25px;
+            overflow: hidden;
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .xp-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+
+        .xp-text {
+            font-size: 0.85em;
+            color: #666;
+            text-align: center;
+        }
+
+        .log-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #ddd;
+        }
+
+        .log-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .log-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        .log-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .xp-input {
+            width: 80px;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+
+        .log-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .log-btn:hover {
+            background: #5568d3;
+        }
+
+        .recent-logs {
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.85em;
+        }
+
+        .log-entry {
+            background: white;
+            padding: 6px 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-entry-text {
+            flex: 1;
+        }
+
+        .log-entry-xp {
+            color: #667eea;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .control-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .stats-overview {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        /* Presets */
+        .presets-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .preset-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.75em;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+
+        .preset-btn.delete-mode {
+            background: #e74c3c;
+        }
+
+        .add-preset-btn {
+            background: transparent;
+            color: #667eea;
+            border: 2px dashed #667eea;
+        }
+
+        .add-preset-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        /* Achievements */
+        .achievements-section {
+            margin-top: 20px;
+        }
+
+        .achievement {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            opacity: 0.5;
+            transition: all 0.3s;
+        }
+
+        .achievement.unlocked {
+            opacity: 1;
+            background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+        }
+
+        .achievement-icon {
+            font-size: 2em;
+        }
+
+        .achievement-info {
+            flex: 1;
+        }
+
+        .achievement-name {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .achievement-desc {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        /* Level up animation */
+        @keyframes levelUp {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .level-up-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 50px;
+            border-radius: 20px;
+            font-size: 2em;
+            font-weight: bold;
+            z-index: 1000;
+            animation: levelUp 0.5s ease;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* Decay rate adjuster */
+        .decay-adjuster {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8em;
+            margin-top: 5px;
+            color: #666;
+        }
+
+        .decay-input {
+            width: 50px;
+            padding: 3px 6px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+
+        /* Progress history chart */
+        .history-chart {
+            height: 250px;
+            margin-top: 20px;
+        }
+
+        .chart-toggle {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .chart-toggle button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+            transition: all 0.3s;
+        }
+
+        .chart-toggle button:hover {
+            background: #5568d3;
+        }
+
+        .chart-toggle button.active {
+            background: #764ba2;
+        }
+        
+        /* Firebase sync status */
+        .sync-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9em;
+            z-index: 100;
+        }
+        
+        .sync-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #27ae60;
+        }
+        
+        .sync-indicator.syncing {
+            background: #f39c12;
+            animation: pulse 1s infinite;
+        }
+        
+        .sync-indicator.error {
+            background: #e74c3c;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .user-id-display {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.85em;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="sync-status">
+        <div class="sync-indicator" id="syncIndicator"></div>
+        <span id="syncStatus">Connecting...</span>
+    </div>
+    
+    <div class="container">
+        <h1>🎮 Life Progress Tracker</h1>
+
+        <div class="stats-overview">
+            <h2>Overall Stats</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalLevel">0</div>
+                    <div class="stat-label">Total Level</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="avgCompletion">0%</div>
+                    <div class="stat-label">Avg Completion</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="streak">0</div>
+                    <div class="stat-label">Day Streak</div>
+                </div>
+            </div>
+            <div class="last-updated" id="lastUpdated"></div>
+            <div class="user-id-display" id="userIdDisplay">Loading user...</div>
+        </div>
+
+        <div class="main-grid">
+            <div class="card">
+                <h2 style="margin-bottom: 20px; color: #667eea;">📊 Progress Radar</h2>
+                <div class="chart-container">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 style="margin-bottom: 20px; color: #667eea;">📈 Categories</h2>
+                <div class="categories-grid" id="categoriesContainer"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="controls">
+                <button class="control-btn" onclick="simulateDay()">⏭️ Simulate Day</button>
+                <button class="control-btn" onclick="resetAll()">🔄 Reset All</button>
+                <button class="control-btn" onclick="exportData()">💾 Export Data</button>
+                <button class="control-btn" onclick="importData()">📥 Import Data</button>
+                <button class="control-btn" onclick="migrateFromLocalStorage()">☁️ Migrate Local Data</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 20px; color: #667eea;">🏆 Achievements</h2>
+            <div id="achievementsContainer"></div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 20px; color: #667eea;">📈 Progress History</h2>
+            <div class="chart-toggle">
+                <button onclick="showHistoryChart('week')" class="active" id="weekBtn">Week</button>
+                <button onclick="showHistoryChart('month')" id="monthBtn">Month</button>
+            </div>
+            <div class="history-chart">
+                <canvas id="historyChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Category definitions
+        const categories = [
+            { id: 'cardio', name: 'Cardio', icon: '🏃', color: 'rgba(255, 99, 132, 0.8)' },
+            { id: 'workout', name: 'Workout', icon: '💪', color: 'rgba(54, 162, 235, 0.8)' },
+            { id: 'nutrition', name: 'Nutrition', icon: '🥗', color: 'rgba(75, 192, 192, 0.8)' },
+            { id: 'social', name: 'Social', icon: '👥', color: 'rgba(153, 102, 255, 0.8)' },
+            { id: 'knowledge', name: 'Knowledge', icon: '📚', color: 'rgba(255, 159, 64, 0.8)' },
+            { id: 'creativity', name: 'Creativity', icon: '🎨', color: 'rgba(255, 205, 86, 0.8)' },
+            { id: 'wellbeing', name: 'Wellbeing', icon: '🧘', color: 'rgba(156, 39, 176, 0.8)' }
+        ];
+
+        // XP levels (exponential curve)
+        const xpForLevel = (level) => Math.floor(100 * Math.pow(1.15, level - 1));
+
+        // Achievement definitions
+        const achievementsList = [
+            { id: 'first_level', name: 'Getting Started', desc: 'Reach level 2 in any category', icon: '🌱', check: () => Object.values(gameState.categories).some(cat => cat.level >= 2) },
+            { id: 'level_5', name: 'Dedicated', desc: 'Reach level 5 in any category', icon: '⭐', check: () => Object.values(gameState.categories).some(cat => cat.level >= 5) },
+            { id: 'level_10', name: 'Master', desc: 'Reach level 10 in any category', icon: '🏅', check: () => Object.values(gameState.categories).some(cat => cat.level >= 10) },
+            { id: 'streak_7', name: 'Week Warrior', desc: 'Maintain a 7-day streak', icon: '🔥', check: () => gameState.streak >= 7 },
+            { id: 'streak_30', name: 'Month Master', desc: 'Maintain a 30-day streak', icon: '💯', check: () => gameState.streak >= 30 },
+            { id: 'balanced', name: 'Balance Master', desc: 'All categories within 10% of each other', icon: '⚖️', check: () => {
+                const progresses = categories.map(cat => getLevelProgress(cat.id).progress);
+                const min = Math.min(...progresses);
+                const max = Math.max(...progresses);
+                return (max - min) <= 10;
+            }},
+            { id: 'total_30', name: 'Rising Star', desc: 'Reach total level 30', icon: '🌟', check: () => Object.values(gameState.categories).reduce((sum, cat) => sum + cat.level, 0) >= 30 },
+            { id: 'total_50', name: 'Super Star', desc: 'Reach total level 50', icon: '✨', check: () => Object.values(gameState.categories).reduce((sum, cat) => sum + cat.level, 0) >= 50 },
+            { id: 'xp_1000', name: 'XP Collector', desc: 'Earn 1000 total XP', icon: '💎', check: () => gameState.totalXPEarned >= 1000 },
+            { id: 'all_categories', name: 'Jack of All Trades', desc: 'Log at least one activity in every category', icon: '🎯', check: () => categories.every(cat => gameState.categories[cat.id].logs.length > 0) }
+        ];
+
+        // Game state
+        let gameState = {
+            categories: {},
+            lastUpdate: new Date().toISOString(),
+            streak: 0,
+            lastActiveDate: null,
+            achievements: [],
+            totalXPEarned: 0
+        };
+        
+        // Firebase sync variables
+        let currentUserId = null;
+        let isLoading = false;
+        let syncTimeout = null;
+
+        // Initialize categories
+        categories.forEach(cat => {
+            gameState.categories[cat.id] = {
+                xp: 0,
+                level: 1,
+                logs: [],
+                lastActivity: new Date().toISOString(),
+                presets: [],
+                decayRate: 2 // 2% per day default
+            };
+        });
+
+        // Update sync status UI
+        function updateSyncStatus(status, message) {
+            const indicator = document.getElementById('syncIndicator');
+            const statusText = document.getElementById('syncStatus');
+            
+            indicator.className = 'sync-indicator';
+            
+            if (status === 'synced') {
+                indicator.classList.add('synced');
+                statusText.textContent = message || 'Synced';
+            } else if (status === 'syncing') {
+                indicator.classList.add('syncing');
+                statusText.textContent = message || 'Syncing...';
+            } else if (status === 'error') {
+                indicator.classList.add('error');
+                statusText.textContent = message || 'Sync Error';
+            }
+        }
+
+        // Load data from Firebase
+        async function loadData() {
+            if (!currentUserId || isLoading) return;
+            
+            isLoading = true;
+            updateSyncStatus('syncing', 'Loading...');
+            
+            try {
+                const { doc, getDoc } = window.firebaseModules;
+                const docRef = doc(window.firebaseDB, 'users', currentUserId);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    gameState = data;
+                    
+                    // Migrate: Add any new categories that don't exist in saved data
+                    categories.forEach(cat => {
+                        if (!gameState.categories[cat.id]) {
+                            gameState.categories[cat.id] = {
+                                xp: 0,
+                                level: 1,
+                                logs: [],
+                                lastActivity: new Date().toISOString(),
+                                presets: [],
+                                decayRate: 2
+                            };
+                        }
+                        // Add decayRate if it doesn't exist (for old saves)
+                        if (gameState.categories[cat.id].decayRate === undefined) {
+                            gameState.categories[cat.id].decayRate = 2;
+                        }
+                        // Add presets if it doesn't exist (for old saves)
+                        if (!gameState.categories[cat.id].presets) {
+                            gameState.categories[cat.id].presets = [];
+                        }
+                    });
+                    
+                    // Initialize achievements if not present
+                    if (!gameState.achievements) {
+                        gameState.achievements = [];
+                    }
+                    
+                    applyDecay();
+                    await saveData(); // Save migrated data
+                }
+                
+                updateSyncStatus('synced', 'Synced');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                updateSyncStatus('error', 'Load failed');
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        // Save data to Firebase with debouncing
+        async function saveData() {
+            if (!currentUserId) return;
+            
+            // Clear existing timeout
+            if (syncTimeout) {
+                clearTimeout(syncTimeout);
+            }
+            
+            // Debounce saves to avoid too many writes
+            syncTimeout = setTimeout(async () => {
+                updateSyncStatus('syncing');
+                
+                try {
+                    const { doc, setDoc } = window.firebaseModules;
+                    const docRef = doc(window.firebaseDB, 'users', currentUserId);
+                    await setDoc(docRef, gameState);
+                    updateSyncStatus('synced');
+                } catch (error) {
+                    console.error('Error saving data:', error);
+                    updateSyncStatus('error', 'Save failed');
+                }
+            }, 1000); // Wait 1 second before saving
+        }
+
+        // Setup real-time sync listener
+        function setupRealtimeSync() {
+            if (!currentUserId) return;
+            
+            const { doc, onSnapshot } = window.firebaseModules;
+            const docRef = doc(window.firebaseDB, 'users', currentUserId);
+            
+            onSnapshot(docRef, (doc) => {
+                if (doc.exists() && !isLoading) {
+                    const data = doc.data();
+                    // Only update if the data is different (avoid render loops)
+                    if (JSON.stringify(data) !== JSON.stringify(gameState)) {
+                        gameState = data;
+                        render();
+                        renderHistoryChart();
+                    }
+                }
+            });
+        }
+
+        // Initialize Firebase Authentication
+        async function initializeAuth() {
+            const { signInAnonymously, onAuthStateChanged } = window.firebaseModules;
+            
+            // Check for existing user ID in localStorage
+            const savedUserId = localStorage.getItem('lifeTrackerUserId');
+            
+            onAuthStateChanged(window.firebaseAuth, async (user) => {
+                if (user) {
+                    currentUserId = user.uid;
+                    localStorage.setItem('lifeTrackerUserId', currentUserId);
+                    
+                    // Update UI with user ID
+                    const userDisplay = document.getElementById('userIdDisplay');
+                    userDisplay.textContent = `User ID: ${currentUserId.substring(0, 8)}... (syncing across devices)`;
+                    
+                    await loadData();
+                    setupRealtimeSync();
+                    render();
+                    renderHistoryChart();
+                } else {
+                    // Sign in anonymously
+                    await signInAnonymously(window.firebaseAuth);
+                }
+            });
+        }
+
+        // Apply decay based on time elapsed
+        function applyDecay() {
+            const now = new Date();
+            const lastUpdate = new Date(gameState.lastUpdate);
+            const daysPassed = Math.floor((now - lastUpdate) / (1000 * 60 * 60 * 24));
+
+            if (daysPassed > 0) {
+                categories.forEach(cat => {
+                    const catState = gameState.categories[cat.id];
+                    const lastActivity = new Date(catState.lastActivity);
+                    const daysInactive = Math.floor((now - lastActivity) / (1000 * 60 * 60 * 24));
+
+                    if (daysInactive > 0) {
+                        // Decay formula: custom rate per day, 15% additional after 3+ days
+                        const baseDecay = catState.decayRate || 2;
+                        let decayPercent = daysInactive * baseDecay;
+                        if (daysInactive >= 3) {
+                            decayPercent += 15;
+                        }
+                        
+                        const decayAmount = Math.floor(catState.xp * (decayPercent / 100));
+                        catState.xp = Math.max(0, catState.xp - decayAmount);
+
+                        // Recalculate level based on remaining XP
+                        catState.level = calculateLevel(catState.xp);
+                    }
+                });
+
+                gameState.lastUpdate = now.toISOString();
+                saveData();
+            }
+        }
+
+        // Calculate level from XP
+        function calculateLevel(xp) {
+            let level = 1;
+            let xpNeeded = 0;
+            while (xpNeeded <= xp) {
+                level++;
+                xpNeeded += xpForLevel(level - 1);
+            }
+            return level - 1;
+        }
+
+        // Add XP to category
+        function addXP(categoryId, amount, description) {
+            const catState = gameState.categories[categoryId];
+            const oldLevel = catState.level;
+            
+            catState.xp += amount;
+            catState.level = calculateLevel(catState.xp);
+            catState.lastActivity = new Date().toISOString();
+            
+            // Track total XP earned
+            gameState.totalXPEarned = (gameState.totalXPEarned || 0) + amount;
+
+            // Add to logs
+            catState.logs.unshift({
+                description,
+                xp: amount,
+                timestamp: new Date().toISOString()
+            });
+
+            // Keep only last 10 logs
+            if (catState.logs.length > 10) {
+                catState.logs = catState.logs.slice(0, 10);
+            }
+
+            // Update streak
+            updateStreak();
+            
+            // Check for level up
+            if (catState.level > oldLevel) {
+                showLevelUpAnimation(categories.find(c => c.id === categoryId).name, catState.level);
+            }
+            
+            // Check achievements
+            checkAchievements();
+
+            saveData();
+            render();
+        }
+
+        // Update streak
+        function updateStreak() {
+            const today = new Date().toDateString();
+            if (gameState.lastActiveDate !== today) {
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                if (gameState.lastActiveDate === yesterday) {
+                    gameState.streak++;
+                } else if (gameState.lastActiveDate !== today) {
+                    gameState.streak = 1;
+                }
+                gameState.lastActiveDate = today;
+            }
+        }
+
+        // Get XP progress for current level
+        function getLevelProgress(categoryId) {
+            const catState = gameState.categories[categoryId];
+            const currentLevelXP = xpForLevel(catState.level);
+            const nextLevelXP = xpForLevel(catState.level + 1);
+            
+            let xpIntoLevel = catState.xp;
+            for (let i = 1; i < catState.level; i++) {
+                xpIntoLevel -= xpForLevel(i);
+            }
+
+            const progress = (xpIntoLevel / currentLevelXP) * 100;
+            return {
+                progress: Math.min(100, Math.max(0, progress)),
+                current: xpIntoLevel,
+                needed: currentLevelXP,
+                percentage: Math.round(progress)
+            };
+        }
+
+        // Render categories
+        function renderCategories() {
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+
+            categories.forEach(cat => {
+                const catState = gameState.categories[cat.id];
+                const progress = getLevelProgress(cat.id);
+                
+                // Render presets
+                const presetsHTML = `
+                    <div class="presets-container">
+                        ${catState.presets.map((preset, idx) => `
+                            <button class="preset-btn" onclick="quickAddPreset('${cat.id}', ${idx})" title="Right-click to delete" oncontextmenu="deletePreset('${cat.id}', ${idx}); return false;">
+                                ${preset.name} (+${preset.xp})
+                            </button>
+                        `).join('')}
+                        <button class="preset-btn add-preset-btn" onclick="addPreset('${cat.id}')">+ Add Preset</button>
+                    </div>
+                `;
+
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                categoryDiv.innerHTML = `
+                    <div class="category-header">
+                        <span class="category-name">${cat.icon} ${cat.name}</span>
+                        <span class="category-level">Lv ${catState.level}</span>
+                    </div>
+                    <div class="xp-bar-container">
+                        <div class="xp-bar" style="width: ${progress.progress}%">
+                            ${progress.percentage}%
+                        </div>
+                    </div>
+                    <div class="xp-text">${progress.current} / ${progress.needed} XP</div>
+                    <div class="decay-adjuster">
+                        <span>Decay Rate:</span>
+                        <input type="number" class="decay-input" value="${catState.decayRate}" min="0" max="10" step="0.5" onchange="updateDecayRate('${cat.id}', this.value)">
+                        <span>% per day</span>
+                    </div>
+                    <div class="log-section">
+                        ${presetsHTML}
+                        <div class="log-form">
+                            <input type="text" class="log-input" placeholder="What did you do?" id="desc-${cat.id}">
+                            <input type="number" class="xp-input" placeholder="XP" value="10" id="xp-${cat.id}">
+                            <button class="log-btn" onclick="logActivity('${cat.id}')">+</button>
+                        </div>
+                        <div class="recent-logs" id="logs-${cat.id}"></div>
+                    </div>
+                `;
+                container.appendChild(categoryDiv);
+
+                // Render logs
+                renderLogs(cat.id);
+            });
+        }
+
+        // Render logs for category
+        function renderLogs(categoryId) {
+            const logsContainer = document.getElementById(`logs-${categoryId}`);
+            const catState = gameState.categories[categoryId];
+            
+            logsContainer.innerHTML = catState.logs.map(log => `
+                <div class="log-entry">
+                    <span class="log-entry-text">${log.description}</span>
+                    <span class="log-entry-xp">+${log.xp} XP</span>
+                </div>
+            `).join('');
+        }
+
+        // Log activity
+        function logActivity(categoryId) {
+            const descInput = document.getElementById(`desc-${categoryId}`);
+            const xpInput = document.getElementById(`xp-${categoryId}`);
+            
+            const description = descInput.value.trim();
+            const xp = parseInt(xpInput.value) || 10;
+
+            if (description) {
+                addXP(categoryId, xp, description);
+                descInput.value = '';
+                xpInput.value = '10';
+            }
+        }
+
+        // Render stats
+        function renderStats() {
+            const totalLevel = Object.values(gameState.categories).reduce((sum, cat) => sum + cat.level, 0);
+            const avgCompletion = Math.round(
+                Object.keys(gameState.categories).reduce((sum, catId) => {
+                    return sum + getLevelProgress(catId).progress;
+                }, 0) / categories.length
+            );
+
+            document.getElementById('totalLevel').textContent = totalLevel;
+            document.getElementById('avgCompletion').textContent = avgCompletion + '%';
+            document.getElementById('streak').textContent = gameState.streak;
+            document.getElementById('lastUpdated').textContent = 
+                'Last updated: ' + new Date(gameState.lastUpdate).toLocaleString();
+        }
+
+        // Radar chart
+        let radarChart;
+
+        function renderRadarChart() {
+            const ctx = document.getElementById('radarChart');
+            
+            const data = {
+                labels: categories.map(cat => cat.icon + ' ' + cat.name),
+                datasets: [{
+                    label: 'Level Progress',
+                    data: categories.map(cat => getLevelProgress(cat.id).progress),
+                    backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                    borderColor: 'rgba(102, 126, 234, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: categories.map(cat => cat.color),
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: categories.map(cat => cat.color),
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }]
+            };
+
+            const config = {
+                type: 'radar',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20,
+                                font: { size: 12 }
+                            },
+                            pointLabels: {
+                                font: { size: 14, weight: 'bold' }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            };
+
+            if (radarChart) {
+                radarChart.destroy();
+            }
+            radarChart = new Chart(ctx, config);
+        }
+
+        // Render everything
+        function render() {
+            renderCategories();
+            renderStats();
+            renderRadarChart();
+            renderAchievements();
+        }
+        
+        // Preset management
+        function addPreset(categoryId) {
+            const name = prompt('Enter preset name (e.g., "30 min run"):');
+            if (!name) return;
+            
+            const xp = parseInt(prompt('Enter XP amount:', '10'));
+            if (isNaN(xp)) return;
+            
+            const catState = gameState.categories[categoryId];
+            catState.presets.push({ name, xp });
+            saveData();
+            render();
+        }
+        
+        function deletePreset(categoryId, index) {
+            const catState = gameState.categories[categoryId];
+            catState.presets.splice(index, 1);
+            saveData();
+            render();
+        }
+        
+        function quickAddPreset(categoryId, index) {
+            const catState = gameState.categories[categoryId];
+            const preset = catState.presets[index];
+            addXP(categoryId, preset.xp, preset.name);
+        }
+        
+        function updateDecayRate(categoryId, rate) {
+            gameState.categories[categoryId].decayRate = parseFloat(rate);
+            saveData();
+        }
+        
+        // Level up animation
+        function showLevelUpAnimation(categoryName, newLevel) {
+            const popup = document.createElement('div');
+            popup.className = 'level-up-popup';
+            popup.innerHTML = `🎉 ${categoryName}<br>Level ${newLevel}! 🎉`;
+            document.body.appendChild(popup);
+            
+            setTimeout(() => {
+                popup.remove();
+            }, 1500);
+        }
+        
+        // Achievements
+        function checkAchievements() {
+            achievementsList.forEach(achievement => {
+                if (!gameState.achievements.includes(achievement.id) && achievement.check()) {
+                    gameState.achievements.push(achievement.id);
+                    showAchievementUnlocked(achievement);
+                }
+            });
+        }
+        
+        function showAchievementUnlocked(achievement) {
+            const popup = document.createElement('div');
+            popup.className = 'level-up-popup';
+            popup.innerHTML = `🏆 Achievement Unlocked!<br>${achievement.icon} ${achievement.name}`;
+            document.body.appendChild(popup);
+            
+            setTimeout(() => {
+                popup.remove();
+            }, 2000);
+        }
+        
+        function renderAchievements() {
+            const container = document.getElementById('achievementsContainer');
+            container.innerHTML = achievementsList.map(achievement => {
+                const unlocked = gameState.achievements.includes(achievement.id);
+                return `
+                    <div class="achievement ${unlocked ? 'unlocked' : ''}">
+                        <div class="achievement-icon">${achievement.icon}</div>
+                        <div class="achievement-info">
+                            <div class="achievement-name">${achievement.name}</div>
+                            <div class="achievement-desc">${achievement.desc}</div>
+                        </div>
+                        ${unlocked ? '<span style="color: #27ae60; font-size: 1.5em;">✓</span>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // History chart
+        let historyChart;
+        let historyPeriod = 'week';
+        
+        function showHistoryChart(period) {
+            historyPeriod = period;
+            
+            // Update button states
+            document.getElementById('weekBtn').classList.toggle('active', period === 'week');
+            document.getElementById('monthBtn').classList.toggle('active', period === 'month');
+            
+            renderHistoryChart();
+        }
+        
+        function renderHistoryChart() {
+            // For now, generate mock historical data based on current state
+            // In a full implementation, you'd save daily snapshots
+            const days = historyPeriod === 'week' ? 7 : 30;
+            const labels = [];
+            const datasets = [];
+            
+            // Generate labels
+            for (let i = days - 1; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+            }
+            
+            // Generate data for each category
+            categories.forEach(cat => {
+                const catState = gameState.categories[cat.id];
+                const data = [];
+                
+                // Simulate historical data with some variation
+                for (let i = 0; i < days; i++) {
+                    const progress = getLevelProgress(cat.id).progress;
+                    const variation = (Math.random() - 0.5) * 20;
+                    data.push(Math.max(0, Math.min(100, progress + variation)));
+                }
+                
+                datasets.push({
+                    label: cat.icon + ' ' + cat.name,
+                    data: data,
+                    borderColor: cat.color,
+                    backgroundColor: cat.color.replace('0.8', '0.1'),
+                    tension: 0.4,
+                    fill: true
+                });
+            });
+            
+            const ctx = document.getElementById('historyChart');
+            
+            if (historyChart) {
+                historyChart.destroy();
+            }
+            
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Progress %'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Simulate a day passing
+        function simulateDay() {
+            const now = new Date();
+            gameState.lastUpdate = new Date(now - 86400000).toISOString();
+            applyDecay();
+            render();
+        }
+
+        // Reset all data
+        async function resetAll() {
+            if (confirm('Are you sure you want to reset all progress? This will delete all your data from the cloud!')) {
+                categories.forEach(cat => {
+                    gameState.categories[cat.id] = {
+                        xp: 0,
+                        level: 1,
+                        logs: [],
+                        lastActivity: new Date().toISOString(),
+                        presets: [],
+                        decayRate: 2
+                    };
+                });
+                gameState.streak = 0;
+                gameState.lastActiveDate = null;
+                gameState.achievements = [];
+                gameState.totalXPEarned = 0;
+                await saveData();
+                render();
+                renderHistoryChart();
+            }
+        }
+
+        // Export data
+        function exportData() {
+            const dataStr = JSON.stringify(gameState, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'life-tracker-backup.json';
+            link.click();
+        }
+
+        // Import data
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        gameState = JSON.parse(event.target.result);
+                        await saveData();
+                        render();
+                        renderHistoryChart();
+                        alert('Data imported successfully!');
+                    } catch (error) {
+                        alert('Error importing data: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+        
+        // Migrate from localStorage to Firebase
+        async function migrateFromLocalStorage() {
+            const saved = localStorage.getItem('lifeTrackerData');
+            if (saved && currentUserId) {
+                const confirmed = confirm('Found local data! Do you want to migrate it to the cloud? This will overwrite any existing cloud data.');
+                if (confirmed) {
+                    try {
+                        gameState = JSON.parse(saved);
+                        await saveData();
+                        localStorage.removeItem('lifeTrackerData');
+                        alert('Migration successful! Your data is now synced to the cloud.');
+                        render();
+                        renderHistoryChart();
+                    } catch (error) {
+                        alert('Migration failed: ' + error.message);
+                    }
+                }
+            }
+        }
+
+        // Handle Enter key in input fields
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.target.classList.contains('log-input')) {
+                const categoryId = e.target.id.replace('desc-', '');
+                logActivity(categoryId);
+            }
+        });
+
+        // Initialize
+        // Wait for Firebase modules to load, then initialize
+        setTimeout(() => {
+            if (window.firebaseDB && window.firebaseAuth) {
+                initializeAuth();
+                
+                // Check for local data to migrate after auth is ready
+                setTimeout(() => {
+                    migrateFromLocalStorage();
+                }, 2000);
+            } else {
+                console.error('Firebase failed to load');
+                updateSyncStatus('error', 'Firebase unavailable');
+            }
+        }, 500);
+
+        // Auto-save is now handled by the saveData debouncing
+        // Apply decay check every minute
+        setInterval(() => {
+            applyDecay();
+        }, 60000);
+    </script>
+</body>
+</html>
